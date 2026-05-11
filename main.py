@@ -66,6 +66,7 @@ async def main() -> None:
     router = CommandRouter(tts=tts, skills=build_skill_registry())
 
     # ── 5. Voice Layer ────────────────────────────────────────────────────────
+    bus._loop = asyncio.get_running_loop()  # let publish_sync work from threads
     wake_word = WakeWordDetector()
     stt = SpeechToText()
     wake_word.start()

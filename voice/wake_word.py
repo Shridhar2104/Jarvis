@@ -11,6 +11,7 @@ v2.5: swap in openwakeword for true offline, low-latency detection.
 
 import logging
 import threading
+import time
 
 import numpy as np
 import sounddevice as sd
@@ -18,12 +19,13 @@ import speech_recognition as sr
 
 from config import WAKE_WORD
 from events.bus import bus, Event
+from voice.state import stt_recording
 
 logger = logging.getLogger(__name__)
 
 SAMPLE_RATE = 16000
 CHUNK_DURATION = 3      # seconds to record per loop iteration
-SILENCE_THRESHOLD = 300  # RMS below this = silence, skip STT call
+SILENCE_THRESHOLD = 80   # RMS below this = silence, skip STT call
 
 
 class WakeWordDetector:
@@ -52,6 +54,10 @@ class WakeWordDetector:
 
     def _listen_loop(self) -> None:
         while self._running:
+            # Pause while STT is using the mic
+            if stt_recording.is_set():
+                time.sleep(0.1)
+                continue
             try:
                 audio_np = sd.rec(
                     int(CHUNK_DURATION * SAMPLE_RATE),
