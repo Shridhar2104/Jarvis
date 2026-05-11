@@ -45,8 +45,8 @@ class TextToSpeech:
                 stderr=asyncio.subprocess.DEVNULL,
             )
             await proc.wait()
-            # Brief cooldown so mic doesn't catch the tail-end reverb
-            await asyncio.sleep(0.3)
+            # Cooldown so mic doesn't catch room reverb after playback
+            await asyncio.sleep(1.0)
         except Exception:
             logger.exception("TTS error")
         finally:

@@ -2,14 +2,13 @@
 voice/listener.py — Always-on continuous voice listener
 
 No wake word. Records whenever speech is detected, transcribes with
-faster-whisper (base.en), and publishes voice.command directly.
+faster-whisper (small.en), and publishes voice.command directly.
 
 Mutes itself while JARVIS is speaking (tts_active) to avoid feedback.
 """
 
 import logging
 import threading
-import time
 
 import numpy as np
 import sounddevice as sd
@@ -27,6 +26,7 @@ SILENCE_RMS = 140     # RMS below this = silence during recording
 SILENCE_SECS = 0.8    # end recording after this much silence
 MIN_SPEECH_SECS = 0.2 # discard if too short (cough, noise)
 MAX_DURATION = 30     # hard cap on recording length
+NO_SPEECH_THRESHOLD = 0.6  # discard if whisper thinks it's not speech
 
 _model: WhisperModel | None = None
 _model_lock = threading.Lock()
@@ -36,9 +36,9 @@ def _get_model() -> WhisperModel:
     global _model
     with _model_lock:
         if _model is None:
-            logger.info("Loading faster-whisper base.en model…")
-            _model = WhisperModel("base.en", device="cpu", compute_type="int8")
-            logger.info("faster-whisper base.en ready")
+            logger.info("Loading faster-whisper small.en model…")
+            _model = WhisperModel("small.en", device="cpu", compute_type="int8")
+            logger.info("faster-whisper small.en ready")
     return _model
 
 
@@ -83,7 +83,7 @@ class ContinuousListener:
             # Log peak RMS every 5s so threshold can be tuned
             max_rms_seen = max(max_rms_seen, rms)
             diagnostic_ticks += 1
-            if diagnostic_ticks >= 20:
+            if diagnostic_ticks >= 50:
                 logger.info("Mic RMS — ambient peak: %d  (onset threshold: %d)", max_rms_seen, ONSET_RMS)
                 max_rms_seen = 0
                 diagnostic_ticks = 0
@@ -118,9 +118,8 @@ class ContinuousListener:
                     silent_secs = 0.0
 
             speech_secs = elapsed - silent_secs
-            logger.info("Recording done — elapsed=%.1fs speech=%.1fs", elapsed, speech_secs)
             if not chunks or speech_secs < MIN_SPEECH_SECS:
-                logger.info("Discarded (too short)")
+                logger.info("Discarded (too short: %.1fs)", speech_secs)
                 continue
 
             # ── Transcribe ────────────────────────────────────────────────────
@@ -128,8 +127,17 @@ class ContinuousListener:
             audio_f32 = audio_np.flatten().astype(np.float32) / 32768.0
 
             try:
-                segments, _ = model.transcribe(audio_f32, language="en", vad_filter=False)
-                text = " ".join(seg.text for seg in segments).strip()
+                segments, _ = model.transcribe(
+                    audio_f32,
+                    language="en",
+                    vad_filter=False,
+                    temperature=0,           # deterministic — no hallucinated variety
+                    condition_on_previous_text=False,  # don't let prior text bias output
+                    no_speech_threshold=NO_SPEECH_THRESHOLD,
+                )
+                # Filter out segments whisper thinks aren't speech
+                kept = [seg.text for seg in segments if seg.no_speech_prob < NO_SPEECH_THRESHOLD]
+                text = " ".join(kept).strip()
             except Exception:
                 logger.exception("Transcription error")
                 continue
