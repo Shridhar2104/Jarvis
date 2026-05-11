@@ -45,6 +45,8 @@ class ContinuousListener:
     def __init__(self) -> None:
         self._thread: threading.Thread | None = None
         self._running = False
+        self._onset_rms = 400    # safe defaults until calibrate() is called
+        self._silence_rms = 200
 
     def start(self) -> None:
         _get_model()
@@ -53,45 +55,37 @@ class ContinuousListener:
         self._thread.start()
         logger.info("ContinuousListener started — always-on mode")
 
-    def stop(self) -> None:
-        self._running = False
-
-    # ── Calibration ───────────────────────────────────────────────────────────
-
-    def _calibrate(self) -> tuple[int, int]:
+    def calibrate(self) -> None:
         """
-        Measure ambient noise floor after TTS greeting finishes.
-        Returns (onset_rms, silence_rms) calibrated to this environment.
+        Measure ambient noise floor. Call this from main.py AFTER the greeting
+        TTS finishes so we sample actual room silence, not speaker output.
         """
-        # Wait for startup TTS to finish before sampling ambient
-        while tts_active.is_set():
-            time.sleep(0.1)
-        time.sleep(0.8)  # let room reverb settle
-
         chunk_samples = int(CHUNK_SECS * SAMPLE_RATE)
+        time.sleep(0.5)  # let reverb from greeting settle
+
         rms_vals = []
-        for _ in range(30):  # sample 3 seconds of ambient
+        for _ in range(30):  # 3 seconds of ambient
             audio = sd.rec(chunk_samples, samplerate=SAMPLE_RATE, channels=1,
                            dtype="int16", blocking=True)
             rms_vals.append(int(np.sqrt(np.mean(audio.astype(np.float32) ** 2))))
 
-        noise_floor = int(np.percentile(rms_vals, 90))  # 90th percentile = robust ceiling
-        onset_rms   = max(200, int(noise_floor * 1.8))  # need 1.8× above floor to trigger
-        silence_rms = noise_floor + 20                  # just above floor = silence
+        noise_floor = int(np.percentile(rms_vals, 90))
+        self._onset_rms   = max(200, int(noise_floor * 1.8))
+        self._silence_rms = noise_floor + 20
 
         logger.info(
             "Calibrated noise floor: %d RMS → onset=%d  silence=%d",
-            noise_floor, onset_rms, silence_rms,
+            noise_floor, self._onset_rms, self._silence_rms,
         )
-        return onset_rms, silence_rms
+
+    def stop(self) -> None:
+        self._running = False
 
     # ── Main loop ─────────────────────────────────────────────────────────────
 
     def _listen_loop(self) -> None:
         model = _get_model()
         chunk_samples = int(CHUNK_SECS * SAMPLE_RATE)
-
-        onset_rms, silence_rms = self._calibrate()
 
         while self._running:
             # ── Wait for speech onset ──────────────────────────────────────────
@@ -102,7 +96,7 @@ class ContinuousListener:
                 continue
 
             rms = int(np.sqrt(np.mean(chunk.astype(np.float32) ** 2)))
-            if rms < onset_rms:
+            if rms < self._onset_rms:
                 continue
 
             # ── Accumulate until silence ───────────────────────────────────────
@@ -123,7 +117,7 @@ class ContinuousListener:
                 elapsed += CHUNK_SECS
 
                 rms = int(np.sqrt(np.mean(chunk.astype(np.float32) ** 2)))
-                if rms < silence_rms:
+                if rms < self._silence_rms:
                     silent_secs += CHUNK_SECS
                     if silent_secs >= SILENCE_SECS:
                         break

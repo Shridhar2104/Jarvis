@@ -71,6 +71,7 @@ async def main() -> None:
 
     # ── 6. Greet ──────────────────────────────────────────────────────────────
     await tts.speak("J.A.R.V.I.S online. All systems nominal. How can I help, sir?")
+    await asyncio.to_thread(listener.calibrate)  # greeting done → sample quiet room
     logger.info("J.A.R.V.I.S v2.0 ready")
 
     # ── 7. Run all background loops + event bus ───────────────────────────────
