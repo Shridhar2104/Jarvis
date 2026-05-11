@@ -22,13 +22,13 @@ from datetime import datetime
 import aiohttp
 from openai import AsyncOpenAI
 
-from config import LLM_MODEL, OPENAI_API_KEY
+from config import LLM_MODEL, OPENAI_API_KEY, OPENAI_BASE_URL
 from orchestrator.agents.base import BaseAgent, AgentFailedError
 from db.models import Job
 
 logger = logging.getLogger(__name__)
 
-_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+_client = AsyncOpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL)
 
 
 class BrowserAgent(BaseAgent):

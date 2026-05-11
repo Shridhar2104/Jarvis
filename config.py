@@ -12,6 +12,7 @@ load_dotenv()
 
 # ── API Keys ──────────────────────────────────────────────────────────────────
 OPENAI_API_KEY: str = os.environ["OPENAI_API_KEY"]
+OPENAI_BASE_URL: str | None = os.getenv("OPENAI_BASE_URL") or None  # set for DeepSeek etc.
 ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
 
 # ── Core ──────────────────────────────────────────────────────────────────────

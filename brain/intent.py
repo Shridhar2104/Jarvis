@@ -15,11 +15,11 @@ from dataclasses import dataclass
 
 from openai import AsyncOpenAI
 
-from config import LLM_MODEL, OPENAI_API_KEY
+from config import LLM_MODEL, OPENAI_API_KEY, OPENAI_BASE_URL
 
 logger = logging.getLogger(__name__)
 
-_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+_client = AsyncOpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL)
 
 SYSTEM_PROMPT = """
 You are the intent classification engine for J.A.R.V.I.S — a macOS AI chief of staff.
