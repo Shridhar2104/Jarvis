@@ -21,10 +21,10 @@ logger = logging.getLogger(__name__)
 
 SAMPLE_RATE = 16000
 CHUNK_SECS = 0.1
-ONSET_RMS = 150       # RMS above this triggers recording
+ONSET_RMS = 200       # RMS above this triggers recording
 SILENCE_RMS = 140     # RMS below this = silence during recording
 SILENCE_SECS = 0.8    # end recording after this much silence
-MIN_SPEECH_SECS = 0.2 # discard if too short (cough, noise)
+MIN_SPEECH_SECS = 0.5 # discard if too short (cough, noise)
 MAX_DURATION = 30     # hard cap on recording length
 NO_SPEECH_THRESHOLD = 0.6  # discard if whisper thinks it's not speech
 

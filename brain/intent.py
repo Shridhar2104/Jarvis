@@ -12,6 +12,7 @@ Receives transcribed voice commands and classifies them into:
 import json
 import logging
 from dataclasses import dataclass
+from datetime import datetime
 
 from openai import AsyncOpenAI
 
@@ -81,17 +82,18 @@ class IntentClassifier:
         """Classify a raw command string into a structured Intent."""
         messages = [{"role": "system", "content": SYSTEM_PROMPT}]
 
-        context_parts = []
+        context_parts = [
+            f"Current time: {datetime.now().strftime('%I:%M %p, %A %B %d %Y')}",
+        ]
         app_context = get_context_line()
         if app_context:
             context_parts.append(app_context)
         if self._routine_context:
             context_parts.append(f"Routine context: {self._routine_context}")
-        if context_parts:
-            messages.append({
-                "role": "system",
-                "content": "\n".join(context_parts),
-            })
+        messages.append({
+            "role": "system",
+            "content": "\n".join(context_parts),
+        })
 
         messages.append({"role": "user", "content": text})
 
