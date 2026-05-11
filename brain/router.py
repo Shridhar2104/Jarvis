@@ -51,6 +51,10 @@ class CommandRouter:
         # Speak the acknowledgement immediately so the user isn't left hanging
         await self._tts.speak(intent.spoken_ack)
 
+        # chat is a pure conversational response — spoken_ack is the full reply
+        if intent.tool_type == "chat":
+            return
+
         if intent.is_long_running:
             await self._spawn_agent(intent)
         else:

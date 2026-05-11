@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 SAMPLE_RATE = 16000
 MAX_DURATION = 20       # seconds
-SILENCE_SECS = 1.5      # stop recording after this much silence
+SILENCE_SECS = 0.8      # stop recording after this much silence
 SILENCE_RMS = 80        # RMS below this = silence
 CHUNK_SECS = 0.1
 
