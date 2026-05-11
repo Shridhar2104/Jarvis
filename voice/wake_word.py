@@ -83,7 +83,8 @@ class WakeWordDetector:
                     continue
 
                 audio_f32 = audio_np.flatten().astype(np.float32) / 32768.0
-                segments, _ = model.transcribe(audio_f32, language="en", vad_filter=True)
+                # vad_filter=False: we already gate on RMS; VAD strips short words like "Jarvis"
+                segments, _ = model.transcribe(audio_f32, language="en", vad_filter=False)
                 text = " ".join(seg.text for seg in segments).strip().lower()
 
                 if not text:
