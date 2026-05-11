@@ -1,0 +1,29 @@
+# ── LLM ──────────────────────────────────────────────────────────────────────
+openai>=1.30.0
+anthropic>=0.25.0
+
+# ── Voice ─────────────────────────────────────────────────────────────────────
+SpeechRecognition>=3.10.0
+sounddevice>=0.4.6          # replaces pyaudio — no PortAudio linking issues
+numpy>=1.24.0               # used by sounddevice voice layer
+faster-whisper>=1.0.0
+pyttsx3>=2.90
+
+# ── macOS Native APIs ─────────────────────────────────────────────────────────
+pyobjc-core>=10.0
+pyobjc-framework-Cocoa>=10.0
+pyobjc-framework-EventKit>=10.0
+
+# ── Automation ───────────────────────────────────────────────────────────────
+pyautogui>=0.9.54
+
+# ── Async / Utilities ─────────────────────────────────────────────────────────
+aiohttp>=3.9.0
+python-dotenv>=1.0.0
+
+# ── Data ─────────────────────────────────────────────────────────────────────
+# SQLite is stdlib — no extra install needed
+
+# ── v2.5 (optional, comment in when ready) ───────────────────────────────────
+# openwakeword>=0.6.0
+# edge-tts>=6.1.9
