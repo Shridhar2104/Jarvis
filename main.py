@@ -1,7 +1,7 @@
 """
 main.py — J.A.R.V.I.S entry point
 
-Boots all six subsystems in dependency order, then runs the asyncio event loop.
+Boots all subsystems in dependency order, then runs the asyncio event loop.
 
 Startup sequence:
   1. init_db()             — create / migrate brain.db
@@ -14,6 +14,7 @@ Startup sequence:
   8. FocusMode             — focus state manager
   9. ProactiveSurface      — overlay + urgency routing
  10. CommandRouter         — intent classification + skill dispatch
+ 11. MobileAPI             — FastAPI server on :8765 for mobile companion
 
 Usage:
   python main.py
@@ -74,10 +75,13 @@ async def main() -> None:
     logger.info("J.A.R.V.I.S v2.0 ready")
 
     # ── 7. Run all background loops + event bus ───────────────────────────────
+    from mobile_api.server import run_server as _run_mobile_api
+    logger.info("Mobile API starting on port %s", __import__("os").getenv("JARVIS_API_PORT", "8765"))
     await asyncio.gather(
         bus.start(),
         life_os.start(),
         _focus_expiry_checker(focus, tts),
+        _run_mobile_api(),
     )
 
 
