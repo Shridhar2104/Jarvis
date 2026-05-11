@@ -135,6 +135,7 @@ class ContinuousListener:
                 continue
 
             if not text:
+                logger.info("Transcription empty — skipping")
                 continue
 
             logger.info("Heard: '%s'", text)

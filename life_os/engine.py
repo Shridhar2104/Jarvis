@@ -108,10 +108,11 @@ class LifeOSEngine:
     # ── Nudge Loop ────────────────────────────────────────────────────────────
 
     async def _nudge_loop(self) -> None:
-        """Check nudge conditions every 5 minutes."""
+        """Check nudge conditions every 5 minutes (first check after 10 min)."""
         if not NUDGE_ENABLED:
             logger.info("Nudge system disabled via config")
             return
+        await asyncio.sleep(600)  # don't nudge on cold start
         while self._running:
             try:
                 nudge = await self._nudge_engine.check()
