@@ -37,8 +37,7 @@ async def main() -> None:
     from db.schema import init_db
     from events.bus import bus
     from voice.tts import TextToSpeech
-    from voice.wake_word import WakeWordDetector
-    from voice.stt import SpeechToText
+    from voice.listener import ContinuousListener
     from orchestrator.manager import AgentOrchestrator
     from life_os.engine import LifeOSEngine
     from proactive.focus import FocusMode
@@ -67,9 +66,8 @@ async def main() -> None:
 
     # ── 5. Voice Layer ────────────────────────────────────────────────────────
     bus._loop = asyncio.get_running_loop()  # let publish_sync work from threads
-    wake_word = WakeWordDetector()
-    stt = SpeechToText()
-    wake_word.start()
+    listener = ContinuousListener()
+    listener.start()
 
     # ── 6. Greet ──────────────────────────────────────────────────────────────
     await tts.speak("J.A.R.V.I.S online. All systems nominal. How can I help, sir?")
