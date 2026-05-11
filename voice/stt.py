@@ -16,13 +16,14 @@ import speech_recognition as sr
 
 from config import STT_BACKEND, WAKE_WORD
 from events.bus import bus, Event
+from voice.state import stt_recording
 
 logger = logging.getLogger(__name__)
 
 SAMPLE_RATE = 16000
 MAX_DURATION = 20       # seconds
 SILENCE_SECS = 1.5      # stop recording after this much silence
-SILENCE_RMS = 300       # RMS below this = silence
+SILENCE_RMS = 80        # RMS below this = silence
 CHUNK_SECS = 0.1
 
 
@@ -51,6 +52,7 @@ class SpeechToText:
             logger.warning("STT returned empty transcription")
 
     def _record_and_transcribe(self) -> str:
+        stt_recording.set()  # signal wake word loop to pause
         chunks: list[np.ndarray] = []
         silent_secs = 0.0
         elapsed = 0.0
@@ -72,6 +74,7 @@ class SpeechToText:
                 silent_secs = 0.0
 
         if not chunks:
+            stt_recording.clear()
             return ""
 
         audio_np = np.concatenate(chunks, axis=0)
@@ -87,3 +90,5 @@ class SpeechToText:
         except Exception:
             logger.exception("STT transcription error")
             return ""
+        finally:
+            stt_recording.clear()  # always resume wake word loop
