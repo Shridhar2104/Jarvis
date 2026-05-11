@@ -23,9 +23,9 @@ logger = logging.getLogger(__name__)
 SAMPLE_RATE = 16000
 CHUNK_SECS = 0.1
 ONSET_RMS = 100       # RMS above this triggers recording
-SILENCE_RMS = 60      # RMS below this = silence during recording
+SILENCE_RMS = 80      # RMS below this = silence during recording
 SILENCE_SECS = 0.8    # end recording after this much silence
-MIN_SPEECH_SECS = 0.4 # discard if too short (cough, noise)
+MIN_SPEECH_SECS = 0.2 # discard if too short (cough, noise)
 MAX_DURATION = 30     # hard cap on recording length
 
 _model: WhisperModel | None = None
@@ -118,7 +118,9 @@ class ContinuousListener:
                     silent_secs = 0.0
 
             speech_secs = elapsed - silent_secs
+            logger.info("Recording done — elapsed=%.1fs speech=%.1fs", elapsed, speech_secs)
             if not chunks or speech_secs < MIN_SPEECH_SECS:
+                logger.info("Discarded (too short)")
                 continue
 
             # ── Transcribe ────────────────────────────────────────────────────
