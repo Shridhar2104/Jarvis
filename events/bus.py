@@ -57,6 +57,7 @@ class EventBus:
         self._subscribers: dict[str, list[Subscriber]] = {}
         self._queue: asyncio.Queue[Event] = asyncio.Queue()
         self._running = False
+        self._loop: asyncio.AbstractEventLoop | None = None
 
     # ── Registration ──────────────────────────────────────────────────────────
 
@@ -80,14 +81,15 @@ class EventBus:
         await self._queue.put(event)
 
     def publish_sync(self, event: Event) -> None:
-        """Thread-safe publish from non-async contexts."""
-        loop = asyncio.get_event_loop()
+        """Thread-safe publish from non-async contexts (e.g. background threads)."""
+        loop = self._loop or asyncio.get_running_loop()
         loop.call_soon_threadsafe(self._queue.put_nowait, event)
 
     # ── Dispatch Loop ─────────────────────────────────────────────────────────
 
     async def start(self) -> None:
         """Run the dispatch loop until stop() is called."""
+        self._loop = asyncio.get_running_loop()
         self._running = True
         logger.info("EventBus started")
         while self._running:
