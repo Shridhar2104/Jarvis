@@ -4,6 +4,8 @@ anthropic>=0.25.0
 
 # ── Voice ─────────────────────────────────────────────────────────────────────
 SpeechRecognition>=3.10.0
+sounddevice>=0.4.6          # replaces pyaudio — no PortAudio linking issues
+numpy>=1.24.0               # used by sounddevice voice layer
 faster-whisper>=1.0.0
 pyttsx3>=2.90
 
