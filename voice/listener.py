@@ -47,6 +47,10 @@ class ContinuousListener:
         self._running = False
         self._onset_rms = 400    # safe defaults until calibrate() is called
         self._silence_rms = 200
+        # Calibration: set by calibrate(), consumed by _listen_loop
+        self._calib_samples: list[int] = []
+        self._calib_needed = 0
+        self._calib_done = threading.Event()
 
     def start(self) -> None:
         _get_model()
@@ -57,19 +61,24 @@ class ContinuousListener:
 
     def calibrate(self) -> None:
         """
-        Measure ambient noise floor. Call this from main.py AFTER the greeting
-        TTS finishes so we sample actual room silence, not speaker output.
+        Measure ambient noise floor using the already-running listener stream.
+        Call this from main.py AFTER the greeting TTS finishes.
+        Collects 30 chunks (3s) of ambient via the listener thread — no second
+        stream needed, avoiding PortAudio's 'stream not stopped' error.
         """
-        chunk_samples = int(CHUNK_SECS * SAMPLE_RATE)
         time.sleep(0.5)  # let reverb from greeting settle
+        self._calib_samples = []
+        self._calib_needed = 30
+        self._calib_done.clear()
+        # Block until the listener thread fills _calib_samples
+        self._calib_done.wait(timeout=10)
+        self._calib_needed = 0
 
-        rms_vals = []
-        for _ in range(30):  # 3 seconds of ambient
-            audio = sd.rec(chunk_samples, samplerate=SAMPLE_RATE, channels=1,
-                           dtype="int16", blocking=True)
-            rms_vals.append(int(np.sqrt(np.mean(audio.astype(np.float32) ** 2))))
+        if not self._calib_samples:
+            logger.warning("Calibration got no samples — keeping defaults")
+            return
 
-        noise_floor = int(np.percentile(rms_vals, 90))
+        noise_floor = int(np.percentile(self._calib_samples, 90))
         self._onset_rms   = max(200, int(noise_floor * 1.8))
         self._silence_rms = noise_floor + 20
 
@@ -96,6 +105,14 @@ class ContinuousListener:
                 continue
 
             rms = int(np.sqrt(np.mean(chunk.astype(np.float32) ** 2)))
+
+            # ── Feed calibration if requested ─────────────────────────────────
+            if self._calib_needed > 0:
+                self._calib_samples.append(rms)
+                if len(self._calib_samples) >= self._calib_needed:
+                    self._calib_done.set()
+                continue
+
             if rms < self._onset_rms:
                 continue
 
