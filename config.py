@@ -18,8 +18,7 @@ ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
 # ── Core ──────────────────────────────────────────────────────────────────────
 WAKE_WORD: str = os.getenv("JARVIS_WAKE_WORD", "jarvis").lower()
 LLM_MODEL: str = os.getenv("JARVIS_MODEL", "gpt-4o")
-TTS_VOICE: str = os.getenv("JARVIS_VOICE", "samantha")
-STT_BACKEND: str = os.getenv("JARVIS_STT", "google")  # google | whisper
+TTS_VOICE: str = os.getenv("JARVIS_VOICE", "en-GB-RyanNeural")
 
 # ── Database ──────────────────────────────────────────────────────────────────
 _default_db = Path.home() / "Library" / "Application Support" / "Jarvis" / "brain.db"

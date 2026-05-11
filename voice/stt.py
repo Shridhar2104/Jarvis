@@ -2,19 +2,20 @@
 voice/stt.py — Speech-to-text transcription
 
 Activated after wake word detection. Records audio until silence using
-sounddevice, then transcribes using the configured backend.
+sounddevice, then transcribes locally with faster-whisper (base.en).
 
 Publishes: Event("voice.command", {"text": "..."})
 """
 
 import asyncio
 import logging
+import threading
 
 import numpy as np
 import sounddevice as sd
-import speech_recognition as sr
+from faster_whisper import WhisperModel
 
-from config import STT_BACKEND, WAKE_WORD
+from config import WAKE_WORD
 from events.bus import bus, Event
 from voice.state import stt_recording
 
@@ -26,20 +27,31 @@ SILENCE_SECS = 1.5      # stop recording after this much silence
 SILENCE_RMS = 80        # RMS below this = silence
 CHUNK_SECS = 0.1
 
+_model: WhisperModel | None = None
+_model_lock = threading.Lock()
+
+
+def _get_model() -> WhisperModel:
+    global _model
+    with _model_lock:
+        if _model is None:
+            logger.info("Loading faster-whisper base.en model…")
+            _model = WhisperModel("base.en", device="cpu", compute_type="int8")
+            logger.info("faster-whisper base.en ready")
+    return _model
+
 
 class SpeechToText:
     """
-    Listens for a single utterance and transcribes it.
+    Listens for a single utterance and transcribes it with faster-whisper locally.
 
     Subscribes to `voice.wake`. On receipt, records the user's command
     and publishes it as `voice.command`.
     """
 
     def __init__(self) -> None:
-        self._recognizer = sr.Recognizer()
-        self._backend = STT_BACKEND
         bus.on("voice.wake", self._on_wake)
-        logger.info("STT initialised (backend: %s)", self._backend)
+        logger.info("STT initialised (faster-whisper base.en)")
 
     async def _on_wake(self, event: Event) -> None:
         logger.info("Wake received — listening for command…")
@@ -78,15 +90,12 @@ class SpeechToText:
             return ""
 
         audio_np = np.concatenate(chunks, axis=0)
-        audio_data = sr.AudioData(audio_np.tobytes(), SAMPLE_RATE, 2)
 
         try:
-            if self._backend == "whisper":
-                return self._recognizer.recognize_whisper(audio_data, model="base.en")
-            return self._recognizer.recognize_google(audio_data)
-        except sr.UnknownValueError:
-            logger.debug("STT: speech not understood")
-            return ""
+            model = _get_model()
+            audio_f32 = audio_np.flatten().astype(np.float32) / 32768.0
+            segments, _ = model.transcribe(audio_f32, language="en")
+            return " ".join(seg.text for seg in segments).strip()
         except Exception:
             logger.exception("STT transcription error")
             return ""
