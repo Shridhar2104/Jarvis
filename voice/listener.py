@@ -153,7 +153,7 @@ class ContinuousListener:
                 segments, _ = model.transcribe(
                     audio_f32,
                     language="en",
-                    vad_filter=False,
+                    vad_filter=True,
                     temperature=0,
                     condition_on_previous_text=False,
                     no_speech_threshold=NO_SPEECH_THRESHOLD,
