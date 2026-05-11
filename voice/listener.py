@@ -1,14 +1,13 @@
 """
 voice/listener.py — Always-on continuous voice listener
 
-No wake word. Records whenever speech is detected, transcribes with
-faster-whisper (small.en), and publishes voice.command directly.
-
-Mutes itself while JARVIS is speaking (tts_active) to avoid feedback.
+Auto-calibrates noise floor on startup, then uses adaptive thresholds
+so it works correctly regardless of ambient noise level.
 """
 
 import logging
 import threading
+import time
 
 import numpy as np
 import sounddevice as sd
@@ -20,13 +19,11 @@ from voice.state import tts_active
 logger = logging.getLogger(__name__)
 
 SAMPLE_RATE = 16000
-CHUNK_SECS = 0.1
-ONSET_RMS = 200       # RMS above this triggers recording
-SILENCE_RMS = 140     # RMS below this = silence during recording
-SILENCE_SECS = 0.8    # end recording after this much silence
-MIN_SPEECH_SECS = 0.5 # discard if too short (cough, noise)
-MAX_DURATION = 30     # hard cap on recording length
-NO_SPEECH_THRESHOLD = 0.6  # discard if whisper thinks it's not speech
+CHUNK_SECS  = 0.1
+SILENCE_SECS = 0.8     # stop recording after this much silence
+MIN_SPEECH_SECS = 0.4  # discard clips shorter than this
+MAX_DURATION = 30
+NO_SPEECH_THRESHOLD = 0.6
 
 _model: WhisperModel | None = None
 _model_lock = threading.Lock()
@@ -43,17 +40,14 @@ def _get_model() -> WhisperModel:
 
 
 class ContinuousListener:
-    """
-    Always-on listener. Speak naturally — no wake word needed.
-    Publishes voice.command for every detected utterance.
-    """
+    """Always-on listener with adaptive noise-floor calibration."""
 
     def __init__(self) -> None:
         self._thread: threading.Thread | None = None
         self._running = False
 
     def start(self) -> None:
-        _get_model()  # preload to avoid latency on first utterance
+        _get_model()
         self._running = True
         self._thread = threading.Thread(target=self._listen_loop, daemon=True)
         self._thread.start()
@@ -62,36 +56,56 @@ class ContinuousListener:
     def stop(self) -> None:
         self._running = False
 
+    # ── Calibration ───────────────────────────────────────────────────────────
+
+    def _calibrate(self) -> tuple[int, int]:
+        """
+        Measure ambient noise floor after TTS greeting finishes.
+        Returns (onset_rms, silence_rms) calibrated to this environment.
+        """
+        # Wait for startup TTS to finish before sampling ambient
+        while tts_active.is_set():
+            time.sleep(0.1)
+        time.sleep(0.8)  # let room reverb settle
+
+        chunk_samples = int(CHUNK_SECS * SAMPLE_RATE)
+        rms_vals = []
+        for _ in range(30):  # sample 3 seconds of ambient
+            audio = sd.rec(chunk_samples, samplerate=SAMPLE_RATE, channels=1,
+                           dtype="int16", blocking=True)
+            rms_vals.append(int(np.sqrt(np.mean(audio.astype(np.float32) ** 2))))
+
+        noise_floor = int(np.percentile(rms_vals, 90))  # 90th percentile = robust ceiling
+        onset_rms   = max(200, int(noise_floor * 1.8))  # need 1.8× above floor to trigger
+        silence_rms = noise_floor + 20                  # just above floor = silence
+
+        logger.info(
+            "Calibrated noise floor: %d RMS → onset=%d  silence=%d",
+            noise_floor, onset_rms, silence_rms,
+        )
+        return onset_rms, silence_rms
+
+    # ── Main loop ─────────────────────────────────────────────────────────────
+
     def _listen_loop(self) -> None:
         model = _get_model()
         chunk_samples = int(CHUNK_SECS * SAMPLE_RATE)
 
-        diagnostic_ticks = 0
-        max_rms_seen = 0
+        onset_rms, silence_rms = self._calibrate()
 
         while self._running:
             # ── Wait for speech onset ──────────────────────────────────────────
             chunk = sd.rec(chunk_samples, samplerate=SAMPLE_RATE, channels=1,
                            dtype="int16", blocking=True)
 
-            # Ignore while JARVIS is speaking (avoid feedback)
             if tts_active.is_set():
                 continue
 
             rms = int(np.sqrt(np.mean(chunk.astype(np.float32) ** 2)))
-
-            # Log peak RMS every 5s so threshold can be tuned
-            max_rms_seen = max(max_rms_seen, rms)
-            diagnostic_ticks += 1
-            if diagnostic_ticks >= 50:
-                logger.info("Mic RMS — ambient peak: %d  (onset threshold: %d)", max_rms_seen, ONSET_RMS)
-                max_rms_seen = 0
-                diagnostic_ticks = 0
-
-            if rms < ONSET_RMS:
+            if rms < onset_rms:
                 continue
 
-            # ── Speech detected — accumulate until silence ─────────────────────
+            # ── Accumulate until silence ───────────────────────────────────────
             logger.info("Speech onset (RMS=%d)", rms)
             chunks = [chunk]
             silent_secs = 0.0
@@ -102,7 +116,6 @@ class ContinuousListener:
                                dtype="int16", blocking=True)
 
                 if tts_active.is_set():
-                    # JARVIS started speaking mid-recording — discard
                     chunks = []
                     break
 
@@ -110,7 +123,7 @@ class ContinuousListener:
                 elapsed += CHUNK_SECS
 
                 rms = int(np.sqrt(np.mean(chunk.astype(np.float32) ** 2)))
-                if rms < SILENCE_RMS:
+                if rms < silence_rms:
                     silent_secs += CHUNK_SECS
                     if silent_secs >= SILENCE_SECS:
                         break
@@ -119,7 +132,6 @@ class ContinuousListener:
 
             speech_secs = elapsed - silent_secs
             if not chunks or speech_secs < MIN_SPEECH_SECS:
-                logger.info("Discarded (too short: %.1fs)", speech_secs)
                 continue
 
             # ── Transcribe ────────────────────────────────────────────────────
@@ -131,11 +143,10 @@ class ContinuousListener:
                     audio_f32,
                     language="en",
                     vad_filter=False,
-                    temperature=0,           # deterministic — no hallucinated variety
-                    condition_on_previous_text=False,  # don't let prior text bias output
+                    temperature=0,
+                    condition_on_previous_text=False,
                     no_speech_threshold=NO_SPEECH_THRESHOLD,
                 )
-                # Filter out segments whisper thinks aren't speech
                 kept = [seg.text for seg in segments if seg.no_speech_prob < NO_SPEECH_THRESHOLD]
                 text = " ".join(kept).strip()
             except Exception:
