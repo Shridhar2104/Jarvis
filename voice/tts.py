@@ -13,6 +13,7 @@ import tempfile
 import edge_tts
 
 from config import TTS_VOICE
+from voice.state import tts_active
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,7 @@ class TextToSpeech:
         """Speak text asynchronously (non-blocking to the event loop)."""
         logger.info("Speaking: %s", text[:80])
         tmp_path = None
+        tts_active.set()  # mute the listener while we're speaking
         try:
             with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
                 tmp_path = f.name
@@ -43,9 +45,12 @@ class TextToSpeech:
                 stderr=asyncio.subprocess.DEVNULL,
             )
             await proc.wait()
+            # Brief cooldown so mic doesn't catch the tail-end reverb
+            await asyncio.sleep(0.3)
         except Exception:
             logger.exception("TTS error")
         finally:
+            tts_active.clear()
             if tmp_path:
                 try:
                     os.unlink(tmp_path)
