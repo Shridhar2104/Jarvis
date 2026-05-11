@@ -22,8 +22,8 @@ logger = logging.getLogger(__name__)
 
 SAMPLE_RATE = 16000
 CHUNK_SECS = 0.1
-ONSET_RMS = 200       # RMS above this triggers recording
-SILENCE_RMS = 80      # RMS below this = silence during recording
+ONSET_RMS = 100       # RMS above this triggers recording
+SILENCE_RMS = 60      # RMS below this = silence during recording
 SILENCE_SECS = 0.8    # end recording after this much silence
 MIN_SPEECH_SECS = 0.4 # discard if too short (cough, noise)
 MAX_DURATION = 30     # hard cap on recording length
@@ -66,6 +66,9 @@ class ContinuousListener:
         model = _get_model()
         chunk_samples = int(CHUNK_SECS * SAMPLE_RATE)
 
+        diagnostic_ticks = 0
+        max_rms_seen = 0
+
         while self._running:
             # ── Wait for speech onset ──────────────────────────────────────────
             chunk = sd.rec(chunk_samples, samplerate=SAMPLE_RATE, channels=1,
@@ -76,11 +79,20 @@ class ContinuousListener:
                 continue
 
             rms = int(np.sqrt(np.mean(chunk.astype(np.float32) ** 2)))
+
+            # Log peak RMS every 5s so threshold can be tuned
+            max_rms_seen = max(max_rms_seen, rms)
+            diagnostic_ticks += 1
+            if diagnostic_ticks >= 50:
+                logger.info("Mic RMS — ambient peak: %d  (onset threshold: %d)", max_rms_seen, ONSET_RMS)
+                max_rms_seen = 0
+                diagnostic_ticks = 0
+
             if rms < ONSET_RMS:
                 continue
 
             # ── Speech detected — accumulate until silence ─────────────────────
-            logger.debug("Speech onset (RMS=%d)", rms)
+            logger.info("Speech onset (RMS=%d)", rms)
             chunks = [chunk]
             silent_secs = 0.0
             elapsed = CHUNK_SECS
